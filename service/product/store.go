@@ -2,22 +2,30 @@ package product
 
 import (
 	"database/sql"
-	"fmt"
-	"strings"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/MichaelGamel/ecom/types"
+	"github.com/MichaelGamel/ecom/utils"
 )
 
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	mysql sq.StatementBuilderType
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+	return &Store{db: db,
+		mysql: sq.StatementBuilder.PlaceholderFormat(sq.Question),
+	}
 }
 
 func (s *Store) GetProductByID(productID int) (*types.Product, error) {
-	rows, err := s.db.Query("SELECT * FROM products WHERE id = ?", productID)
+	q, args, err := s.mysql.Select("*").From(utils.TablesConfig.Products).Where(sq.Eq{"id": productID}).ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -34,16 +42,13 @@ func (s *Store) GetProductByID(productID int) (*types.Product, error) {
 }
 
 func (s *Store) GetProductsByID(productIDs []int) ([]types.Product, error) {
-	placeholders := strings.Repeat(",?", len(productIDs)-1)
-	query := fmt.Sprintf("SELECT * FROM products WHERE id IN (?%s)", placeholders)
+	q, args, err := s.mysql.Select("*").From(utils.TablesConfig.Products).Where(sq.Eq{"id": productIDs}).ToSql()
 
-	// Convert productIDs to []interface{}
-	args := make([]interface{}, len(productIDs))
-	for i, v := range productIDs {
-		args[i] = v
+	if err != nil {
+		return nil, err
 	}
 
-	rows, err := s.db.Query(query, args...)
+	rows, err := s.db.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +68,12 @@ func (s *Store) GetProductsByID(productIDs []int) ([]types.Product, error) {
 }
 
 func (s *Store) GetProducts() ([]*types.Product, error) {
-	rows, err := s.db.Query("SELECT * FROM products")
+	q, _, err := s.mysql.Select("*").From(utils.TablesConfig.Products).ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(q)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +92,12 @@ func (s *Store) GetProducts() ([]*types.Product, error) {
 }
 
 func (s *Store) CreateProduct(product types.CreateProductPayload) (int64, error) {
-	result, err := s.db.Exec("INSERT INTO products (name, price, image, description, quantity) VALUES (?, ?, ?, ?, ?)", product.Name, product.Price, product.Image, product.Description, product.Quantity)
+	stmt, args, err := s.mysql.Insert(utils.TablesConfig.Products).Columns("name", "price", "image", "description", "quantity").Values(product.Name, product.Price, product.Image, product.Description, product.Quantity).ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := s.db.Exec(stmt, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -96,7 +111,12 @@ func (s *Store) CreateProduct(product types.CreateProductPayload) (int64, error)
 }
 
 func (s *Store) UpdateProduct(product types.Product) error {
-	_, err := s.db.Exec("UPDATE products SET name = ?, price = ?, image = ?, description = ?, quantity = ? WHERE id = ?", product.Name, product.Price, product.Image, product.Description, product.Quantity, product.ID)
+	stmt, args, err := s.mysql.Update(utils.TablesConfig.Products).Set("name", product.Name).Set("price", product.Price).Set("image", product.Image).Set("description", product.Description).Set("quantity", product.Quantity).Where(sq.Eq{"id": product.ID}).ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(stmt, args...)
 	if err != nil {
 		return err
 	}

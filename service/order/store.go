@@ -3,19 +3,29 @@ package order
 import (
 	"database/sql"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/MichaelGamel/ecom/types"
+	"github.com/MichaelGamel/ecom/utils"
 )
 
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	mysql sq.StatementBuilderType
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+	return &Store{db: db,
+		mysql: sq.StatementBuilder.PlaceholderFormat(sq.Question),
+	}
 }
 
 func (s *Store) CreateOrder(order types.Order) (int, error) {
-	res, err := s.db.Exec("INSERT INTO orders (userId, total, status, address) VALUES (?, ?, ?, ?)", order.UserID, order.Total, order.Status, order.Address)
+	stmt, args, err := s.mysql.Insert(utils.TablesConfig.Orders).Columns("userId", "total", "status", "address").Values(order.UserID, order.Total, order.Status, order.Address).ToSql()
+	if err != nil {
+		return 0, err
+	}
+
+	res, err := s.db.Exec(stmt, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -29,6 +39,11 @@ func (s *Store) CreateOrder(order types.Order) (int, error) {
 }
 
 func (s *Store) CreateOrderItem(orderItem types.OrderItem) error {
-	_, err := s.db.Exec("INSERT INTO order_items (orderId, productId, quantity, price) VALUES (?, ?, ?, ?)", orderItem.OrderID, orderItem.ProductID, orderItem.Quantity, orderItem.Price)
+	stmt, args, err := s.mysql.Insert(utils.TablesConfig.OrderItems).Columns("orderId", "productId", "quantity", "price").Values(orderItem.OrderID, orderItem.ProductID, orderItem.Quantity, orderItem.Price).ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(stmt, args...)
 	return err
 }

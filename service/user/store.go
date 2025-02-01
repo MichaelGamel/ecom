@@ -4,22 +4,33 @@ import (
 	"database/sql"
 	"fmt"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/MichaelGamel/ecom/types"
+	"github.com/MichaelGamel/ecom/utils"
 )
 
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	mysql sq.StatementBuilderType
 }
 
 func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
+	return &Store{db: db,
+		mysql: sq.StatementBuilder.PlaceholderFormat(sq.Question),
+	}
 }
 
 func (s *Store) GetUserByEmail(email string) (*types.User, error) {
-	rows, err := s.db.Query("SELECT * FROM users WHERE email = ?", email)
+	query, args, err := s.mysql.Select("*").From(utils.TablesConfig.Users).Where(sq.Eq{"email": email}).ToSql()
 	if err != nil {
 		return nil, err
 	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
 	u := new(types.User)
 	for rows.Next() {
 		u, err = scanRowIntoUser(rows)
@@ -37,7 +48,12 @@ func (s *Store) GetUserByEmail(email string) (*types.User, error) {
 }
 
 func (s *Store) CreateUser(user types.User) error {
-	_, err := s.db.Exec("INSERT INTO users (firstName, lastName, email, password) VALUES (?, ?, ?, ?)", user.FirstName, user.LastName, user.Email, user.Password)
+	stmt, args, err := s.mysql.Insert(utils.TablesConfig.Users).Columns("firstName", "lastName", "email", "password").Values(user.FirstName, user.LastName, user.Email, user.Password).ToSql()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(stmt, args...)
 	if err != nil {
 		return err
 	}
@@ -46,7 +62,12 @@ func (s *Store) CreateUser(user types.User) error {
 }
 
 func (s *Store) GetUserByID(id int) (*types.User, error) {
-	rows, err := s.db.Query("SELECT * FROM users WHERE id = ?", id)
+	query, args, err := s.mysql.Select("*").From(utils.TablesConfig.Users).Where(sq.Eq{"id": id}).ToSql()
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
